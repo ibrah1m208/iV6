@@ -205,11 +205,35 @@ print-gdbport:
 
 QEMU_VERSION := $(shell $(QEMU) --version | head -n 1 | sed -E 's/^QEMU emulator version ([0-9]+\.[0-9]+)\..*/\1/')
 check-qemu-version:
-	@if [ "$(shell echo "$(QEMU_VERSION) >= $(MIN_QEMU_VERSION)" | bc)" -eq 0 ]; then \
-		echo "ERROR: Need qemu version >= $(MIN_QEMU_VERSION)"; \
-		exit 1; \
+	@if command -v bc >/dev/null 2>&1; then \
+		if [ "$$(echo "$(QEMU_VERSION) >= $(MIN_QEMU_VERSION)" | bc 2>/dev/null)" = "0" ]; then \
+			echo "ERROR: Need qemu version >= $(MIN_QEMU_VERSION)"; \
+			exit 1; \
+		fi \
 	fi
 
-.PHONY: fmt
+.PHONY: fmt help
 fmt:
 	clang-format -i $(wildcard kernel/*.[ch] user/*.[ch] mkfs/*.c)
+
+help:
+	@echo "========================================================================"
+	@echo "  xv6 Build & Execution Guide"
+	@echo "========================================================================"
+	@echo "  make                     - Build kernel and fs.img (default Round Robin)"
+	@echo "  make qemu                - Boot xv6 in QEMU with default Round Robin"
+	@echo "  make qemu SCHEDULER=MLFQ - Boot xv6 in QEMU with MLFQ scheduler"
+	@echo "  make qemu SCHEDULER=FIFO - Boot xv6 in QEMU with FIFO (FCFS) scheduler"
+	@echo "  make clean               - Remove all build artifacts (kernel, fs.img, *.o)"
+	@echo "  make qemu-gdb            - Run QEMU waiting for GDB connection"
+	@echo "  make fmt                 - Format C and header files with clang-format"
+	@echo ""
+	@echo "Options:"
+	@echo "  CPUS=N                   - Set number of simulated CPUs (e.g. CPUS=1)"
+	@echo "  SCHEDULER=MLFQ|FIFO      - Select scheduling algorithm (default: RR)"
+	@echo ""
+	@echo "Inside xv6:"
+	@echo "  schedulertest            - Run scheduler benchmark program"
+	@echo "  Ctrl+P                   - Trigger procdump (show processes, queue, ticks)"
+	@echo "  Ctrl+A then X            - Exit QEMU"
+	@echo "========================================================================"
