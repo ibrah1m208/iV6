@@ -82,8 +82,17 @@ usertrap(void)
     kexit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if (which_dev == 2)
+  if (which_dev == 2) {
+#ifdef SCHEDULER_MLFQ
+    if (mlfq_tick_handler(p))
+      yield();
+#elif defined(SCHEDULER_FIFO)
+    p->rtime++;
+#else
+    p->rtime++;
     yield();
+#endif
+  }
 
   prepare_return();
 
@@ -154,8 +163,17 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  if (which_dev == 2 && myproc() != 0)
+  if (which_dev == 2 && myproc() != 0) {
+#ifdef SCHEDULER_MLFQ
+    if (mlfq_tick_handler(myproc()))
+      yield();
+#elif defined(SCHEDULER_FIFO)
+    myproc()->rtime++;
+#else
+    myproc()->rtime++;
     yield();
+#endif
+  }
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
@@ -166,11 +184,25 @@ kerneltrap()
 void
 clockintr()
 {
+#ifdef SCHEDULER_MLFQ
+  int do_boost = 0;
+#endif
   if (cpuid() == 0) {
     acquire(&tickslock);
     ticks++;
     wakeup(&ticks);
+#ifdef SCHEDULER_MLFQ
+    if (ticks > 0 && ticks % 48 == 0) {
+      do_boost = 1;
+    }
+#endif
     release(&tickslock);
+
+#ifdef SCHEDULER_MLFQ
+    if (do_boost) {
+      mlfq_boost();
+    }
+#endif
   }
 
   // ask for the next timer interrupt. this also clears

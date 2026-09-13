@@ -101,4 +101,17 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  // Scheduling metrics (for cross-scheduler comparison)
+  uint ctime;                  // Creation / arrival time (ticks)
+  int stime;                   // Time first scheduled on CPU (-1 if never)
+  uint etime;                  // Exit / completion time (ticks)
+  uint rtime;                  // Total ticks running on CPU
+
+#ifdef SCHEDULER_MLFQ
+  int mlfq_queue;        // Current MLFQ priority queue (0=highest, 3=lowest)
+  int mlfq_ticks_used;   // Timer ticks consumed in the current slice
+  int mlfq_total_ticks;  // Total ticks ever run (for reporting/procdump)
+  uint64 mlfq_enter_seq; // Sequence counter for queue arrival/tail ordering
+#endif
 };

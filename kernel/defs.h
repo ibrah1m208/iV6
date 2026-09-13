@@ -98,11 +98,18 @@ void            sleep_prepare(void*);
 void            sleep(void);
 void            userinit(void);
 int             kwait(uint64);
+int             kwaitx(uint64, uint64, uint64, uint64);
 void            wakeup(void*);
 void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+#ifdef SCHEDULER_MLFQ
+void            mlfq_boost(void);
+uint64          mlfq_next_seq(void);
+int             mlfq_has_higher_priority(int cur_q);
+int             mlfq_tick_handler(struct proc *p);
+#endif
 
 // swtch.S
 void            swtch(struct context*, struct context*);
