@@ -80,6 +80,11 @@ CFLAGS += -fno-builtin-printf -fno-builtin-fprintf -fno-builtin-vprintf
 CFLAGS += -I.
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 
+# Scheduler selection: pass SCHEDULER=MLFQ to enable MLFQ, otherwise defaults to round-robin
+ifdef SCHEDULER
+CFLAGS += -DSCHEDULER_$(SCHEDULER)
+endif
+
 # Disable PIE when possible (for Ubuntu 16.10 toolchain)
 ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]no-pie'),)
 CFLAGS += -fno-pie -no-pie
@@ -170,6 +175,11 @@ GDBPORT = $(shell expr `id -u` % 5000 + 25000)
 QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
 	then echo "-gdb tcp::$(GDBPORT)"; \
 	else echo "-s -p $(GDBPORT)"; fi)
+ifneq ($(filter $(SCHEDULER), MLFQ FIFO),)
+ifndef CPUS
+CPUS := 1
+endif
+endif
 ifndef CPUS
 CPUS := 3
 endif
