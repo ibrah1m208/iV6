@@ -18,15 +18,25 @@ struct run {
   struct run *next;
 };
 
+#define PA2INDEX(pa) (((uint64)(pa) - KERNBASE) / PGSIZE)
+#define NUM_PHYS_PAGES ((PHYSTOP - KERNBASE) / PGSIZE)
+
 struct {
   struct spinlock lock;
   struct run *freelist;
 } kmem;
 
+struct {
+  struct spinlock lock;
+  int count[NUM_PHYS_PAGES];
+} page_ref;
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&page_ref.lock, "page_ref");
+  for (int i = 0; i < NUM_PHYS_PAGES; i++) page_ref.count[i] = 1;
   freerange(end, (void *)PHYSTOP);
 }
 
@@ -35,8 +45,7 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char *)PGROUNDUP((uint64)pa_start);
-  for (; p + PGSIZE <= (char *)pa_end; p += PGSIZE)
-    kfree(p);
+  for (; p + PGSIZE <= (char *)pa_end; p += PGSIZE) kfree(p);
 }
 
 // Free the page of physical memory pointed at by pa,
@@ -50,6 +59,16 @@ kfree(void *pa)
 
   if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+
+  acquire(&page_ref.lock);
+  if (page_ref.count[PA2INDEX(pa)] < 1)
+    panic("kfree: ref count < 1");
+  page_ref.count[PA2INDEX(pa)]--;
+  if (page_ref.count[PA2INDEX(pa)] > 0) {
+    release(&page_ref.lock);
+    return;
+  }
+  release(&page_ref.lock);
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
@@ -76,7 +95,40 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if (r)
+  if (r) {
     memset((char *)r, 5, PGSIZE); // fill with junk
+    acquire(&page_ref.lock);
+    page_ref.count[PA2INDEX(r)] = 1;
+    release(&page_ref.lock);
+  }
   return (void *)r;
 }
+
+// Increment reference count of physical page pa.
+void
+kref_inc(void *pa)
+{
+  if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
+    panic("kref_inc");
+
+  acquire(&page_ref.lock);
+  page_ref.count[PA2INDEX(pa)]++;
+  release(&page_ref.lock);
+}
+
+// Get reference count of physical page pa.
+int
+kref_get(void *pa)
+{
+  int cnt;
+
+  if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
+    panic("kref_get");
+
+  acquire(&page_ref.lock);
+  cnt = page_ref.count[PA2INDEX(pa)];
+  release(&page_ref.lock);
+
+  return cnt;
+}
+
