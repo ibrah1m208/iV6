@@ -157,6 +157,7 @@ UPROGS=\
 	$U/_sync\
 	$U/_schedulertest\
 	$U/_alarmtest\
+	$U/_cowtest\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

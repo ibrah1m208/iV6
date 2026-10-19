@@ -301,22 +301,25 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for (i = 0; i < sz; i += PGSIZE) {
     if ((pte = walk(old, i, 0)) == 0)
       continue; // page table entry hasn't been allocated
     if ((*pte & PTE_V) == 0)
       continue; // physical page hasn't been allocated
+
+    // If writable, mark COW and remove write permission for parent
+    if (*pte & PTE_W) {
+      *pte = (*pte & ~PTE_W) | PTE_COW;
+    }
+
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if ((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char *)pa, PGSIZE);
-    if (mappages(new, i, PGSIZE, (uint64)mem, flags) != 0) {
-      kfree(mem);
+
+    if (mappages(new, i, PGSIZE, pa, flags) != 0) {
       goto err;
     }
+    kref_inc((void *)pa);
   }
   return 0;
 
@@ -357,6 +360,13 @@ copyout(pagetable_t pagetable, uint64 psz, uint64 dstva, char *src, uint64 len)
       if ((pa0 = vmfault(pagetable, psz, va0, 0)) == 0) {
         return -1;
       }
+    }
+
+    if (is_cow_page(pagetable, va0)) {
+      if (cowfault(pagetable, va0) < 0) {
+        return -1;
+      }
+      pa0 = walkaddr(pagetable, va0);
     }
 
     pte = walk(pagetable, va0, 0);
@@ -489,3 +499,68 @@ ismapped(pagetable_t pagetable, uint64 va)
   }
   return 0;
 }
+
+// Check if a virtual address maps to a valid COW page.
+int
+is_cow_page(pagetable_t pagetable, uint64 va)
+{
+  if (va >= MAXVA)
+    return 0;
+  pte_t *pte = walk(pagetable, va, 0);
+  if (pte == 0)
+    return 0;
+  if ((*pte & PTE_V) == 0)
+    return 0;
+  if ((*pte & PTE_U) == 0)
+    return 0;
+  return (*pte & PTE_COW) != 0;
+}
+
+// Handle a COW page fault: duplicate page or re-enable write in-place.
+// Returns 0 on success, -1 on failure.
+int
+cowfault(pagetable_t pagetable, uint64 va)
+{
+  if (va >= MAXVA)
+    return -1;
+
+  va = PGROUNDDOWN(va);
+  pte_t *pte = walk(pagetable, va, 0);
+  if (pte == 0)
+    return -1;
+  if ((*pte & PTE_V) == 0)
+    return -1;
+  if ((*pte & PTE_U) == 0)
+    return -1;
+  if ((*pte & PTE_COW) == 0)
+    return -1;
+
+  uint64 pa = PTE2PA(*pte);
+  if (pa == 0)
+    return -1;
+
+  int count = kref_get((void *)pa);
+  if (count <= 0)
+    panic("cowfault: ref count <= 0");
+
+  if (count == 1) {
+    // Single reference: re-enable write in-place
+    *pte = (*pte & ~PTE_COW) | PTE_W;
+    sfence_vma();
+    return 0;
+  }
+
+  // Multiple references: allocate new page and duplicate
+  char *mem = kalloc();
+  if (mem == 0)
+    return -1;
+
+  memmove(mem, (char *)pa, PGSIZE);
+  uint flags = (PTE_FLAGS(*pte) & ~PTE_COW) | PTE_W;
+  *pte = PA2PTE(mem) | flags;
+  sfence_vma();
+
+  kfree((void *)pa);
+  return 0;
+}
+
