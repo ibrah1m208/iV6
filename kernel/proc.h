@@ -114,4 +114,10 @@ struct proc {
   int mlfq_total_ticks;  // Total ticks ever run (for reporting/procdump)
   uint64 mlfq_enter_seq; // Sequence counter for queue arrival/tail ordering
 #endif
+
+  int alarm_interval;          // ticks between alarms; 0 if disabled
+  uint64 alarm_handler;        // address of user alarm handler function
+  int alarm_ticks;             // ticks accumulated since last alarm
+  int alarm_executing;         // Zero if alarm is not running. Non-zero otherwise
+  struct trapframe alarm_tf;   // saved user register state during alarm handler
 };

@@ -44,3 +44,5 @@ entry("pause");
 entry("uptime");
 entry("sync");
 entry("waitx");
+entry("sigalarm");
+entry("sigreturn");

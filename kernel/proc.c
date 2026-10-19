@@ -178,6 +178,13 @@ found:
   p->mlfq_enter_seq = mlfq_next_seq();
 #endif
 
+  // Initialize alarm fields
+  p->alarm_interval = 0;
+  p->alarm_handler = 0;
+  p->alarm_ticks = 0;
+  p->alarm_executing = 0;
+  memset(&p->alarm_tf, 0, sizeof(p->alarm_tf));
+
   return p;
 }
 
@@ -209,6 +216,11 @@ freeproc(struct proc *p)
   p->mlfq_total_ticks = 0;
   p->mlfq_enter_seq = 0;
 #endif
+  p->alarm_interval = 0;
+  p->alarm_handler = 0;
+  p->alarm_ticks = 0;
+  p->alarm_executing = 0;
+  memset(&p->alarm_tf, 0, sizeof(p->alarm_tf));
   p->state = UNUSED;
 }
 
