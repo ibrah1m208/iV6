@@ -160,6 +160,7 @@ UPROGS=\
 	$U/_cowtest\
 	$U/_symlinksmoke\
 	$U/_symlinktest\
+	$U/_readlink\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
