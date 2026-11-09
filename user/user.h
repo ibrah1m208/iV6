@@ -28,6 +28,7 @@ int sync(void);
 int waitx(int*, int*, int*, int*);
 int sigalarm(int ticks, void (*handler)());
 int sigreturn(void);
+int symlink(const char *, const char *);
 
 // ulib.c
 int stat(const char *, struct stat *);

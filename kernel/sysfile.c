@@ -528,3 +528,35 @@ sys_pipe(void)
   }
   return 0;
 }
+
+// Create a symbolic link at path that points to target.
+// target need not exist (dangling symlinks are allowed).
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  struct inode *ip;
+  int n;
+
+  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+
+  begin_op();
+  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
+    end_op();
+    return -1;
+  }
+
+  // Store the target pathname in the symlink inode's data blocks.
+  // Length is recorded in ip->size (no trailing NUL required).
+  n = strlen(target);
+  if (writei(ip, 0, (uint64)target, 0, n) != n) {
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+
+  iunlockput(ip);
+  end_op();
+  return 0;
+}

@@ -46,3 +46,4 @@ entry("sync");
 entry("waitx");
 entry("sigalarm");
 entry("sigreturn");
+entry("symlink");

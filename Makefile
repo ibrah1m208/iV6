@@ -158,6 +158,7 @@ UPROGS=\
 	$U/_schedulertest\
 	$U/_alarmtest\
 	$U/_cowtest\
+	$U/_symlinksmoke\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
