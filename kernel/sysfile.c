@@ -325,6 +325,41 @@ fail:
   return 0;
 }
 
+static int
+resolve_symlink_path(char *dst, const char *curpath, const char *target)
+{
+  if (target[0] == '/') {
+    if (strlen(target) >= MAXPATH)
+      return -1;
+    safestrcpy(dst, target, MAXPATH);
+    return 0;
+  }
+
+  int slash_idx = -1;
+  for (int i = 0; curpath[i] != '\0'; i++) {
+    if (curpath[i] == '/')
+      slash_idx = i;
+  }
+
+  if (slash_idx < 0) {
+    if (strlen(target) >= MAXPATH)
+      return -1;
+    safestrcpy(dst, target, MAXPATH);
+    return 0;
+  }
+
+  int pfx_len = slash_idx + 1;
+  int tgt_len = strlen(target);
+  if (pfx_len + tgt_len >= MAXPATH)
+    return -1;
+
+  char tmp[MAXPATH];
+  memmove(tmp, curpath, pfx_len);
+  safestrcpy(tmp + pfx_len, target, MAXPATH - pfx_len);
+  safestrcpy(dst, tmp, MAXPATH);
+  return 0;
+}
+
 uint64
 sys_open(void)
 {
@@ -342,6 +377,17 @@ sys_open(void)
 
   if (omode & O_CREATE) {
     ip = create(path, T_FILE, 0, 0);
+    if (ip == 0 && !(omode & O_NOFOLLOW)) {
+      struct inode *sip = namei(path);
+      if (sip != 0) {
+        ilock(sip);
+        if (sip->type == T_SYMLINK) {
+          ip = sip;
+        } else {
+          iunlockput(sip);
+        }
+      }
+    }
     if (ip == 0) {
       end_op();
       return -1;
@@ -352,11 +398,63 @@ sys_open(void)
       return -1;
     }
     ilock(ip);
-    if (ip->type == T_DIR && omode != O_RDONLY) {
+  }
+
+  int depth = 0;
+  while (ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)) {
+    if (++depth > 10) {
       iunlockput(ip);
       end_op();
       return -1;
     }
+
+    char target[MAXPATH];
+    int sz = ip->size;
+    if (sz >= MAXPATH || readi(ip, 0, (uint64)target, 0, sz) != sz) {
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+    target[sz] = '\0';
+    iunlockput(ip);
+
+    char nextpath[MAXPATH];
+    if (resolve_symlink_path(nextpath, path, target) < 0) {
+      end_op();
+      return -1;
+    }
+    safestrcpy(path, nextpath, MAXPATH);
+
+    if (omode & O_CREATE) {
+      ip = create(path, T_FILE, 0, 0);
+      if (ip == 0) {
+        struct inode *sip = namei(path);
+        if (sip != 0) {
+          ilock(sip);
+          if (sip->type == T_SYMLINK) {
+            ip = sip;
+          } else {
+            iunlockput(sip);
+          }
+        }
+      }
+      if (ip == 0) {
+        end_op();
+        return -1;
+      }
+    } else {
+      if ((ip = namei(path)) == 0) {
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+    }
+  }
+
+  if (ip->type == T_DIR && omode != O_RDONLY) {
+    iunlockput(ip);
+    end_op();
+    return -1;
   }
 
   if (ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)) {
